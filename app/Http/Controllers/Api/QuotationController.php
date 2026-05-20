@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\DocumentCalculator;
 use App\Models\Quotation;
 use App\Models\QuotationItem;
 use Illuminate\Http\Request;
@@ -43,55 +44,62 @@ class QuotationController extends Controller
         }
 
         $validated = $request->validate([
-            'customer_id'  => 'required|exists:customers,id',
-            'issue_date'   => 'required|date',
-            'valid_until'  => 'required|date',
-            'currency'     => 'required|string|max:3',
-            'notes'        => 'nullable|string',
-            'items'        => 'required|array|min:1',
+            'customer_id'     => 'required|exists:customers,id',
+            'issue_date'      => 'required|date',
+            'valid_until'     => 'required|date',
+            'currency'        => 'required|string|max:3',
+            'notes'           => 'nullable|string',
+            'tax_rate'        => 'nullable|numeric|min:0|max:100',
+            'discount_type'   => 'nullable|in:none,percentage,fixed',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'items'           => 'required|array|min:1',
             'items.*.description' => 'required|string',
             'items.*.quantity'    => 'required|numeric|min:0.01',
             'items.*.unit_price'  => 'required|numeric|min:0',
             'items.*.tax_rate'    => 'nullable|numeric|min:0|max:100',
         ]);
 
-        $lastQuotation = Quotation::where('workspace_id', $workspace->id)
-            ->orderBy('id', 'desc')->first();
-        $nextNumber = $lastQuotation ? (int) substr($lastQuotation->quotation_number, 4) + 1 : 1;
+        $lastQuotation   = Quotation::where('workspace_id', $workspace->id)->withTrashed()->orderBy('id', 'desc')->first();
+        $nextNumber      = $lastQuotation ? (int) substr($lastQuotation->quotation_number, 4) + 1 : 1;
         $quotationNumber = 'QUO-' . str_pad($nextNumber, 5, '0', STR_PAD_LEFT);
 
-        $subtotal = 0;
-        $taxAmount = 0;
-        foreach ($validated['items'] as $item) {
-            $lineSubtotal = $item['quantity'] * $item['unit_price'];
-            $lineTax = $lineSubtotal * (($item['tax_rate'] ?? 0) / 100);
-            $subtotal += $lineSubtotal;
-            $taxAmount += $lineTax;
-        }
+        $discountType   = $validated['discount_type'] ?? 'none';
+        $discountAmount = (float)($validated['discount_amount'] ?? 0);
+        $taxRate        = (float)($validated['tax_rate'] ?? 0);
+        $taxType        = $workspace->tax_type ?? 'per_item';
+        $taxInclusive   = (bool)($workspace->tax_inclusive ?? false);
+
+        $totals = DocumentCalculator::compute(
+            $validated['items'], $discountType, $discountAmount, $taxType, $taxRate, $taxInclusive
+        );
 
         $quotation = Quotation::create([
-            'workspace_id'     => $workspace->id,
-            'customer_id'      => $validated['customer_id'],
-            'created_by_id'    => $user->id,
-            'quotation_number' => $quotationNumber,
-            'status'           => 'draft',
-            'issue_date'       => $validated['issue_date'],
-            'valid_until'      => $validated['valid_until'],
-            'currency'         => $validated['currency'],
-            'notes'            => $validated['notes'] ?? null,
-            'subtotal'         => $subtotal,
-            'tax_amount'       => $taxAmount,
-            'total_amount'     => $subtotal + $taxAmount,
+            'workspace_id'    => $workspace->id,
+            'customer_id'     => $validated['customer_id'],
+            'created_by_id'   => $user->id,
+            'quotation_number'=> $quotationNumber,
+            'status'          => 'draft',
+            'issue_date'      => $validated['issue_date'],
+            'valid_until'     => $validated['valid_until'],
+            'currency'        => $validated['currency'],
+            'notes'           => $validated['notes'] ?? null,
+            'discount_type'   => $discountType,
+            'discount_amount' => $discountAmount,
+            'discount_value'  => $totals['discount_value'],
+            'subtotal'        => $totals['subtotal'],
+            'tax_amount'      => $totals['tax_amount'],
+            'total_amount'    => $totals['total_amount'],
         ]);
 
         foreach ($validated['items'] as $item) {
-            $lineSubtotal = $item['quantity'] * $item['unit_price'];
-            $lineTax = $lineSubtotal * (($item['tax_rate'] ?? 0) / 100);
+            $lineSubtotal = (float)$item['quantity'] * (float)$item['unit_price'];
+            $lineTaxRate  = (float)($item['tax_rate'] ?? 0);
+            $lineTax      = $taxType === 'per_item' ? $lineSubtotal * ($lineTaxRate / 100) : 0;
             $quotation->items()->create([
                 'description' => $item['description'],
                 'quantity'    => $item['quantity'],
                 'unit_price'  => $item['unit_price'],
-                'tax_rate'    => $item['tax_rate'] ?? 0,
+                'tax_rate'    => $lineTaxRate,
                 'line_total'  => $lineSubtotal + $lineTax,
             ]);
         }

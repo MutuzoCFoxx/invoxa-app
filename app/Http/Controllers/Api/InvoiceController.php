@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\DocumentCalculator;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use Illuminate\Http\Request;
@@ -42,75 +43,81 @@ class InvoiceController extends Controller
         
         // Check plan limit
         if (!$workspace->canCreateInvoice()) {
-            $limits = $workspace->getLimits();
             return response()->json([
-                'success' => false,
-                'message' => 'You have reached your monthly invoice limit. Upgrade to Pro for unlimited invoices.',
+                'success'    => false,
+                'message'    => 'You have used all your free invoices. Upgrade to Pro for unlimited invoices, or refer friends to earn more.',
                 'error_code' => 'PLAN_LIMIT_REACHED',
                 'data' => [
-                    'current_plan' => $workspace->plan,
-                    'invoices_used' => $workspace->invoices_this_month,
-                    'invoices_limit' => $limits['invoices_per_month'],
+                    'current_plan'   => $workspace->plan,
+                    'invoices_used'  => $workspace->invoices_this_month,
+                    'invoices_limit' => $workspace->freeCap(),
+                    'referral_code'  => $workspace->referral_code,
                 ]
             ], 403);
         }
+
         $validated = $request->validate([
-            'customer_id' => 'required|exists:customers,id',
-            'issue_date' => 'required|date',
-            'due_date' => 'required|date|after_or_equal:issue_date',
-            'currency' => 'required|string|size:3',
-            'notes' => 'nullable|string',
-            'items' => 'required|array|min:1',
+            'customer_id'     => 'required|exists:customers,id',
+            'issue_date'      => 'required|date',
+            'due_date'        => 'required|date|after_or_equal:issue_date',
+            'currency'        => 'required|string|size:3',
+            'notes'           => 'nullable|string',
+            'tax_rate'        => 'nullable|numeric|min:0|max:100',
+            'discount_type'   => 'nullable|in:none,percentage,fixed',
+            'discount_amount' => 'nullable|numeric|min:0',
+            'items'           => 'required|array|min:1',
             'items.*.description' => 'required|string',
-            'items.*.quantity' => 'required|numeric|min:0.01',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
+            'items.*.quantity'    => 'required|numeric|min:0.01',
+            'items.*.unit_price'  => 'required|numeric|min:0',
+            'items.*.tax_rate'    => 'nullable|numeric|min:0|max:100',
         ]);
 
         $workspace = $request->user()->workspace;
 
-        $count = Invoice::where('workspace_id', $workspace->id)->count() + 1;
+        $count = Invoice::where('workspace_id', $workspace->id)->withTrashed()->count() + 1;
         $invoiceNumber = 'INV-' . str_pad($count, 5, '0', STR_PAD_LEFT);
 
-        $subtotal = 0;
-        $taxAmount = 0;
+        $discountType   = $validated['discount_type'] ?? 'none';
+        $discountAmount = (float)($validated['discount_amount'] ?? 0);
+        $taxRate        = (float)($validated['tax_rate'] ?? 0);
+        $taxType        = $workspace->tax_type ?? 'per_item';
+        $taxInclusive   = (bool)($workspace->tax_inclusive ?? false);
 
-        foreach ($validated['items'] as $item) {
-            $itemSubtotal = $item['quantity'] * $item['unit_price'];
-            $itemTax = $itemSubtotal * (($item['tax_rate'] ?? 0) / 100);
-            $subtotal += $itemSubtotal;
-            $taxAmount += $itemTax;
-        }
-
-        $totalAmount = $subtotal + $taxAmount;
+        $totals = DocumentCalculator::compute(
+            $validated['items'], $discountType, $discountAmount, $taxType, $taxRate, $taxInclusive
+        );
 
         $invoice = Invoice::create([
-            'workspace_id' => $workspace->id,
-            'customer_id' => $validated['customer_id'],
-            'created_by_id' => $request->user()->id,
-            'invoice_number' => $invoiceNumber,
-            'status' => 'draft',
-            'issue_date' => $validated['issue_date'],
-            'due_date' => $validated['due_date'],
-            'currency' => $validated['currency'],
-            'notes' => $validated['notes'] ?? null,
-            'subtotal' => $subtotal,
-            'tax_amount' => $taxAmount,
-            'total_amount' => $totalAmount,
+            'workspace_id'    => $workspace->id,
+            'customer_id'     => $validated['customer_id'],
+            'created_by_id'   => $request->user()->id,
+            'invoice_number'  => $invoiceNumber,
+            'status'          => 'draft',
+            'issue_date'      => $validated['issue_date'],
+            'due_date'        => $validated['due_date'],
+            'currency'        => $validated['currency'],
+            'notes'           => $validated['notes'] ?? null,
+            'discount_type'   => $discountType,
+            'discount_amount' => $discountAmount,
+            'discount_value'  => $totals['discount_value'],
+            'subtotal'        => $totals['subtotal'],
+            'tax_amount'      => $totals['tax_amount'],
+            'total_amount'    => $totals['total_amount'],
         ]);
         $workspace->incrementInvoiceCount();
 
         foreach ($validated['items'] as $itemData) {
-            $itemSubtotal = $itemData['quantity'] * $itemData['unit_price'];
-            $itemTax = $itemSubtotal * (($itemData['tax_rate'] ?? 0) / 100);
+            $lineSubtotal = (float)$itemData['quantity'] * (float)$itemData['unit_price'];
+            $lineTaxRate  = (float)($itemData['tax_rate'] ?? 0);
+            $lineTax      = $taxType === 'per_item' ? $lineSubtotal * ($lineTaxRate / 100) : 0;
 
             InvoiceItem::create([
-                'invoice_id' => $invoice->id,
+                'invoice_id'  => $invoice->id,
                 'description' => $itemData['description'],
-                'quantity' => $itemData['quantity'],
-                'unit_price' => $itemData['unit_price'],
-                'tax_rate' => $itemData['tax_rate'] ?? 0,
-                'line_total' => $itemSubtotal + $itemTax,
+                'quantity'    => $itemData['quantity'],
+                'unit_price'  => $itemData['unit_price'],
+                'tax_rate'    => $lineTaxRate,
+                'line_total'  => $lineSubtotal + $lineTax,
             ]);
         }
 

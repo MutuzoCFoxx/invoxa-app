@@ -12,12 +12,19 @@ class Quotation extends Model
     protected $fillable = [
         'workspace_id', 'customer_id', 'created_by_id',
         'quotation_number', 'status', 'issue_date', 'valid_until',
-        'currency', 'notes', 'subtotal', 'tax_amount', 'total_amount'
+        'currency', 'notes',
+        'subtotal', 'discount_type', 'discount_amount', 'discount_value',
+        'tax_amount', 'total_amount',
     ];
 
     protected $casts = [
-        'issue_date' => 'date',
-        'valid_until' => 'date',
+        'issue_date'      => 'date',
+        'valid_until'     => 'date',
+        'subtotal'        => 'decimal:2',
+        'discount_amount' => 'decimal:2',
+        'discount_value'  => 'decimal:2',
+        'tax_amount'      => 'decimal:2',
+        'total_amount'    => 'decimal:2',
     ];
 
     public function workspace()
