@@ -22,4 +22,4 @@ RUN mkdir -p storage/logs storage/framework/cache storage/framework/sessions sto
 
 EXPOSE 8080
 
-CMD touch /data/database.sqlite && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php -S 0.0.0.0:8080 -t public
+CMD mkdir -p /tmp && touch /tmp/database.sqlite && php artisan migrate --force && php artisan config:clear && php artisan route:clear && php -S 0.0.0.0:${PORT:-8080} -t public

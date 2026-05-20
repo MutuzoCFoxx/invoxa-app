@@ -5,7 +5,7 @@ primary_region = "jnb"
 
 [env]
   DB_CONNECTION = "sqlite"
-  DB_DATABASE = "/data/database.sqlite"
+  DB_DATABASE = "/tmp/database.sqlite"
 
 [http_service]
   internal_port = 8080
