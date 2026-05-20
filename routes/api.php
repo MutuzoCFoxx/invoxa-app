@@ -84,10 +84,11 @@ Route::middleware('auth:sanctum')->group(function () {
     // Expenses
     Route::apiResource('expenses', ExpenseController::class);
 
-    // Admin
-    Route::get('admin/dashboard',                        [App\Http\Controllers\Api\AdminController::class, 'dashboard']);
-    Route::get('admin/subscribers',                      [App\Http\Controllers\Api\AdminController::class, 'subscribers']);
-    Route::post('admin/billing/send/{workspaceId}',      [App\Http\Controllers\Api\AdminController::class, 'sendBillingInvoice']);
-    Route::post('admin/billing/send-all',                [App\Http\Controllers\Api\AdminController::class, 'sendBillingToAll']);
-    Route::put('admin/users/{userId}/role',              [App\Http\Controllers\Api\AdminController::class, 'updateUserRole']);
+    // Admin (is_admin flag required)
+    Route::middleware(\App\Http\Middleware\AdminMiddleware::class)->prefix('admin')->group(function () {
+        Route::get('stats',                              [App\Http\Controllers\Api\AdminController::class, 'stats']);
+        Route::get('users',                              [App\Http\Controllers\Api\AdminController::class, 'users']);
+        Route::put('users/{user}/plan',                  [App\Http\Controllers\Api\AdminController::class, 'updatePlan']);
+        Route::post('users/{user}/toggle-active',        [App\Http\Controllers\Api\AdminController::class, 'toggleActive']);
+    });
 });
