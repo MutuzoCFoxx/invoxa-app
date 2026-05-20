@@ -53,11 +53,23 @@
             @if($invoice->workspace->logo_url)
                 @php
                     $logoUrl = $invoice->workspace->logo_url;
+                    $logoBase64 = null;
                     try {
-                        $ctx = stream_context_create(['http' => ['timeout' => 3]]);
-                        $logoData = @file_get_contents($logoUrl, false, $ctx);
-                        $logoBase64 = $logoData ? 'data:image/png;base64,' . base64_encode($logoData) : null;
-                    } catch(\Exception $e) { $logoBase64 = null; }
+                        if (str_contains($logoUrl, '/storage/')) {
+                            // Locally stored — read from disk (fast, no HTTP)
+                            $relativePath = preg_replace('#^.*/storage/#', '', $logoUrl);
+                            $localPath = storage_path('app/public/' . $relativePath);
+                            if (file_exists($localPath)) {
+                                $mime = mime_content_type($localPath) ?: 'image/png';
+                                $logoBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($localPath));
+                            }
+                        } else {
+                            // External URL — fetch with timeout
+                            $ctx = stream_context_create(['http' => ['timeout' => 3]]);
+                            $data = @file_get_contents($logoUrl, false, $ctx);
+                            if ($data) $logoBase64 = 'data:image/png;base64,' . base64_encode($data);
+                        }
+                    } catch(\Exception $e) {}
                 @endphp
                 @if($logoBase64)
                     <img src="{{ $logoBase64 }}" class="logo" alt="logo">
