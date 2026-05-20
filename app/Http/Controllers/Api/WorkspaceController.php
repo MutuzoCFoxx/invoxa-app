@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class WorkspaceController extends Controller
 {
@@ -24,8 +23,7 @@ class WorkspaceController extends Controller
         $validated = $request->validate([
             'name'               => 'sometimes|string|max:255',
             'currency'           => 'sometimes|string|in:USD,EUR,GBP,RWF',
-            'logo_url'           => 'nullable|string|max:500',
-            'company_email'      => 'nullable|email|max:255',
+'company_email'      => 'nullable|email|max:255',
             'company_phone'      => 'nullable|string|max:50',
             'company_address'    => 'nullable|string|max:1000',
             'tax_id'             => 'nullable|string|max:100',
@@ -63,34 +61,23 @@ class WorkspaceController extends Controller
 
         $workspace = $request->user()->workspace;
 
-        // Remove old logo file if it was locally uploaded
-        if ($workspace->logo_url && str_contains($workspace->logo_url, '/storage/logos/')) {
-            $oldPath = str_replace(url('/storage/'), '', $workspace->logo_url);
-            Storage::disk('public')->delete($oldPath);
-        }
+        $file    = $request->file('logo');
+        $mime    = $file->getMimeType() ?: 'image/png';
+        $data    = base64_encode(file_get_contents($file->getRealPath()));
+        $dataUri = "data:{$mime};base64,{$data}";
 
-        $file = $request->file('logo');
-        $path = $file->store("logos/{$workspace->id}", 'public');
-        $url  = url(Storage::url($path));
-
-        $workspace->update(['logo_url' => $url]);
+        $workspace->update(['logo_url' => $dataUri]);
 
         return response()->json([
             'success'  => true,
             'message'  => 'Logo uploaded successfully',
-            'logo_url' => $url,
+            'logo_url' => $dataUri,
         ]);
     }
 
     public function removeLogo(Request $request)
     {
         $workspace = $request->user()->workspace;
-
-        if ($workspace->logo_url && str_contains($workspace->logo_url, '/storage/logos/')) {
-            $oldPath = str_replace(url('/storage/'), '', $workspace->logo_url);
-            Storage::disk('public')->delete($oldPath);
-        }
-
         $workspace->update(['logo_url' => null]);
 
         return response()->json(['success' => true, 'message' => 'Logo removed']);
