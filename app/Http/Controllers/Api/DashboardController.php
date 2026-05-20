@@ -42,12 +42,17 @@ class DashboardController extends Controller
 
         $totalExpenses = Expense::where('workspace_id', $workspaceId)->sum('amount');
 
-        // Monthly revenue for last 6 months
+        // Monthly revenue for last 6 months (DB-agnostic)
+        $isPgsql = DB::getDriverName() === 'pgsql';
+        $monthExpr = $isPgsql
+            ? "TO_CHAR(paid_at, 'YYYY-MM')"
+            : "strftime('%Y-%m', paid_at)";
+
         $monthlyRevenue = Invoice::where('workspace_id', $workspaceId)
             ->where('status', 'paid')
             ->where('paid_at', '>=', now()->subMonths(6)->startOfMonth())
             ->select(
-                DB::raw("strftime('%Y-%m', paid_at) as month"),
+                DB::raw("{$monthExpr} as month"),
                 DB::raw('SUM(total_amount) as revenue')
             )
             ->groupBy('month')
@@ -87,9 +92,9 @@ class DashboardController extends Controller
         // Revenue stats
         $totalPaid = Invoice::where('workspace_id', $workspaceId)->where('status', 'paid')->sum('total_amount');
         $thisMonth = Invoice::where('workspace_id', $workspaceId)->where('status', 'paid')
-            ->whereRaw("strftime('%Y-%m', paid_at) = strftime('%Y-%m', 'now')")->sum('total_amount');
+            ->whereYear('paid_at', now()->year)->whereMonth('paid_at', now()->month)->sum('total_amount');
         $thisYear  = Invoice::where('workspace_id', $workspaceId)->where('status', 'paid')
-            ->whereRaw("strftime('%Y', paid_at) = strftime('%Y', 'now')")->sum('total_amount');
+            ->whereYear('paid_at', now()->year)->sum('total_amount');
 
         // Outstanding
         $outstanding = Invoice::where('workspace_id', $workspaceId)
