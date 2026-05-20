@@ -54,7 +54,8 @@
                 @php
                     $logoUrl = $invoice->workspace->logo_url;
                     try {
-                        $logoData = @file_get_contents($logoUrl);
+                        $ctx = stream_context_create(['http' => ['timeout' => 3]]);
+                        $logoData = @file_get_contents($logoUrl, false, $ctx);
                         $logoBase64 = $logoData ? 'data:image/png;base64,' . base64_encode($logoData) : null;
                     } catch(\Exception $e) { $logoBase64 = null; }
                 @endphp

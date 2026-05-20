@@ -80,7 +80,7 @@ class InvoiceController extends Controller
         $discountType   = $validated['discount_type'] ?? 'none';
         $discountAmount = (float)($validated['discount_amount'] ?? 0);
         $taxRate        = (float)($validated['tax_rate'] ?? 0);
-        $taxType        = $workspace->tax_type ?? 'per_item';
+        $taxType        = $workspace->tax_type ?? 'on_total';
         $taxInclusive   = (bool)($workspace->tax_inclusive ?? false);
 
         $totals = DocumentCalculator::compute(
