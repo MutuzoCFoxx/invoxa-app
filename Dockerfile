@@ -1,7 +1,8 @@
 FROM php:8.2-cli
 
 RUN apt-get update && apt-get install -y \
-    curl unzip git libzip-dev libpng-dev libonig-dev libxml2-dev libpq-dev \
+    curl unzip git libzip-dev libpng-dev libjpeg-dev libwebp-dev libonig-dev libxml2-dev libpq-dev \
+    && docker-php-ext-configure gd --with-webp --with-jpeg \
     && docker-php-ext-install pdo pdo_mysql pdo_pgsql pgsql zip mbstring exif pcntl bcmath gd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
