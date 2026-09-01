@@ -17,6 +17,7 @@ class Customer extends Model
         'phone',
         'billing_address',
         'company_name',
+        'tin',
     ];
 
     public function workspace()

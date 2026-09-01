@@ -101,6 +101,9 @@
             @if($quotation->customer->billing_address)
                 <div class="info">{{ $quotation->customer->billing_address }}</div>
             @endif
+            @if($quotation->customer->tin)
+                <div class="info">TIN: {{ $quotation->customer->tin }}</div>
+            @endif
         </div>
         <div class="billing-right">
             <div class="date-row">

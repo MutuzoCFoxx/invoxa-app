@@ -30,6 +30,7 @@ class CustomerController extends Controller
             'phone' => 'nullable|string',
             'company_name' => 'nullable|string',
             'billing_address' => 'nullable|string',
+            'tin' => 'nullable|string',
         ]);
 
         $workspace = $request->user()->workspace;
@@ -61,6 +62,7 @@ class CustomerController extends Controller
             'phone' => 'nullable|string',
             'company_name' => 'nullable|string',
             'billing_address' => 'nullable|string',
+            'tin' => 'nullable|string',
         ]);
 
         $customer->update($validated);

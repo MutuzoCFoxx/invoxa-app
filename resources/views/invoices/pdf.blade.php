@@ -103,6 +103,9 @@
             @if($invoice->customer->billing_address)
                 <div class="info">{{ $invoice->customer->billing_address }}</div>
             @endif
+            @if($invoice->customer->tin)
+                <div class="info">TIN: {{ $invoice->customer->tin }}</div>
+            @endif
         </div>
         <div class="billing-right">
             <div class="date-row">
