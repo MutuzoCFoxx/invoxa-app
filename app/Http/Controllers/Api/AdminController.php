@@ -21,6 +21,10 @@ class AdminController extends Controller
                 'free_users'     => Workspace::where('plan', 'free')->count(),
                 'pro_users'      => Workspace::where('plan', 'pro')->count(),
                 'business_users' => Workspace::where('plan', 'business')->count(),
+                'overdue_users'  => Workspace::where('plan', '!=', 'free')
+                                        ->whereNotNull('plan_expires_at')
+                                        ->where('plan_expires_at', '<', now())
+                                        ->count(),
                 'total_invoices' => Invoice::count(),
                 'paid_invoices'  => Invoice::where('status', 'paid')->count(),
                 'mrr'            => (Workspace::where('plan', 'pro')->count() * 10000)
@@ -50,6 +54,12 @@ class AdminController extends Controller
             $query->where('is_active', false);
         }
 
+        if ($request->billing === 'overdue') {
+            $query->whereHas('workspace', fn($q) => $q->where('plan', '!=', 'free')
+                ->whereNotNull('plan_expires_at')
+                ->where('plan_expires_at', '<', now()));
+        }
+
         return response()->json([
             'success' => true,
             'data'    => $query->paginate(25),
@@ -62,7 +72,11 @@ class AdminController extends Controller
             'plan' => 'required|in:free,pro,business',
         ]);
 
-        $user->workspace?->update(['plan' => $validated['plan']]);
+        $newPlan = $validated['plan'];
+        $user->workspace?->update($newPlan === 'free'
+            ? ['plan' => 'free', 'plan_status' => null, 'plan_expires_at' => null]
+            : ['plan' => $newPlan, 'plan_status' => 'active', 'plan_expires_at' => now()->addMonth()]
+        );
 
         return response()->json([
             'success' => true,
