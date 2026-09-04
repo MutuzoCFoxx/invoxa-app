@@ -27,6 +27,7 @@ class MakeAdmin extends Command
         }
 
         $user->update(['is_admin' => true, 'is_active' => true]);
+        $user->workspace?->update(['plan' => 'business']);
         $this->info("Admin granted to: {$email}");
 
         return 0;
